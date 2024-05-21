@@ -1,130 +1,193 @@
 #include <iostream>
-#include <thread>
 #include <queue>
 #include <mutex>
-#include <condition_variable>
+#include <future>
+#include <thread>
+#include <chrono>
 #include <cmath>
+#include <functional>
+#include <unordered_map>
 #include <fstream>
 #include <random>
+#include <iomanip>
 
-// Task structure to store task information
-struct Task {
-    int id;
-    int type; // 1: sin, 2: sqrt, 3: pow
-    double arg;
-    double result;
-};
-
-// Server class template
+// задача
 template<typename T>
-class Server {
-private:
-    std::queue<Task> taskQueue;
-    std::vector<Task> results;
-    std::mutex mtx;
-    std::condition_variable cv;
-    bool isRunning = true;
-    std::thread serverThread;
-
-public:
-    void start() {
-        serverThread = std::thread(&Server::processTasks, this);
-    }
-
-    void stop() {
-        isRunning = false;
-        cv.notify_all();
-        serverThread.join();
-    }
-
-    size_t add_task(Task task) {
-        std::unique_lock<std::mutex> lock(mtx);
-        task.id = results.size();
-        taskQueue.push(task);
-        cv.notify_one();
-        return task.id;
-    }
-
-    Task request_result(int id_res) {
-        std::unique_lock<std::mutex> lock(mtx);
-        cv.wait(lock, [&] { return results.size() > id_res; });
-        return results[id_res];
-    }
-
-private:
-    void processTasks() {
-        while (isRunning) {
-            Task task;
-            {
-                std::unique_lock<std::mutex> lock(mtx);
-                cv.wait(lock, [&] { return !taskQueue.empty() || !isRunning; });
-                if (!isRunning) break;
-                task = taskQueue.front();
-                taskQueue.pop();
-            }
-
-            if (task.type == 1) {
-                task.result = static_cast<T>(std::sin(task.arg));
-            }
-            else if (task.type == 2) {
-                task.result = static_cast<T>(std::sqrt(task.arg));
-            }
-            else if (task.type == 3) {
-                task.result = static_cast<T>(std::pow(task.arg, 2));
-            }
-
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                results.push_back(task);
-            }
-        }
-    }
-};
-
-// Client function to add tasks to server
-template<typename T>
-void client(Server<T>& server, int numTasks, int type) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<T> dist(1, 100);
-
-    for (int i = 0; i < numTasks; ++i) {
-        Task task;
-        task.type = type;
-        task.arg = dist(gen);
-        server.add_task(task);
-    }
+T f_pow(T x, T y)
+{
+    return std::pow(x, y);
 }
 
-int main() {
-    Server<double> server;
-    server.start();
+template<typename T>
+T f_sin(T x)
+{
+    return std::sin(x);
+}
 
-    std::thread client1(client<double>, std::ref(server), 10, 1);
-    std::thread client2(client<double>, std::ref(server), 10, 2);
-    std::thread client3(client<double>, std::ref(server), 10, 3);
+template<typename T>
+T f_sqrt(T x)
+{
+    return std::sqrt(x);
+}
 
-    client1.join();
-    client2.join();
-    client3.join();
-
-    std::ofstream file1("sin_results.txt");
-    std::ofstream file2("sqrt_results.txt");
-    std::ofstream file3("pow_results.txt");
-
-    for (int i = 0; i < 10; ++i) {
-        auto request_result1 = server.request_result(i);
-        auto request_result2 = server.request_result(i + 10);
-        auto request_result3 = server.request_result(i + 20);
-        file1 << "sin(" << request_result1.arg << ") = " << request_result1.result << std::endl;
-        file2 << "sqrt(" << request_result2.arg << ") = " << request_result2.result << std::endl;
-        file3 << request_result3.arg << "^2 = " << request_result3.result << std::endl;
+// пример сервера обрабатывающего задачи из очереди
+template<typename T>
+class Server{
+public:
+    Server(){}
+    void start(){
+        working = true;
+        potok = std::thread(&Server::work,this);
     }
 
-    file1.close();
-    file2.close();
-    file3.close();
+    void stop(){
+         working = false;
+         potok.join();
+    }
+    size_t add_task(std::packaged_task<T()> task){
+                // добавляем задачу в очередь
+                std::unique_lock<std::mutex> lock(mtx);
+                std::future<T> result = task.get_future();
+                task_idx++;
+                size_t idx = task_idx ;
+                results[idx] = result.share();
+                tasks.push(std::move(task));
+                idxs.push(idx);
 
-    server.stop();
-    return 0;
+                //std::cout<<"help";
+                return idx;
+    }
+    T request_result(size_t idx){
+        // берем задачу из словаря решаем её и кидаем резы в results
+        std::shared_future<T> future;
+        {
+        std::unique_lock<std::mutex> lock(mtx);
+        future = results.find(idx)->second;
+        } 
+        return future.get();
+
+    }
+
+private:
+    void work()
+    {
+        // пока не получили сигнал стоп
+        size_t idx;
+        std::packaged_task<T()> task;
+        while (working)
+        {
+            // если очередь не пуста, то достаем задачу и решаем
+            std::unique_lock<std::mutex> lock(mtx);
+            if(!tasks.empty())
+            {
+
+                //std::cout<<"что то есть";
+                idx = idxs.front();
+                
+                task = std::move(tasks.front());
+                tasks.pop();
+                idxs.pop();
+                lock.unlock();
+                task();
+            }
+            else{
+                lock.unlock();
+                if (!working){
+                    break;
+                }
+            }
+        }
+
+    }
+
+    std::mutex mtx;
+    std::thread potok;
+    bool working = 0;
+    // Очередь задач
+    size_t task_idx = 0;
+    std::queue<size_t> idxs;
+    std::queue<std::packaged_task<T()>> tasks;
+    std::unordered_map<size_t,std::shared_future<T>> results;
+};
+
+void client(Server<double>& server,int N,int func_type,const std::string& filename)
+{
+    // для рандомной генерации аргументов
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> dist(1, 10);
+    std::uniform_real_distribution<double> dist_real(0.0, 10.0);
+    
+    // открываем файл
+
+    std::ofstream file(filename);
+        if (!file.is_open()) {
+        std::cerr << "Не удалось открыть файл" << filename << std::endl;
+        return;
+    }
+
+
+    for (size_t i = 0; i < N; i++)
+    {
+        if (func_type==0)
+        {
+        
+            int arg1 = dist(gen);
+            int arg2 = dist(gen);
+            std::packaged_task<double()> task(std::bind(f_pow<int>,arg1,arg2));
+
+            size_t idx = server.add_task(std::move(task));
+            double ans = server.request_result(idx);
+            //std::cout << "работает клиент пов\n";
+            //std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            file << "pow "<<arg1<<" "<<arg2<<" = "<< std::fixed <<ans<<std::endl;
+                 
+        }
+        if (func_type==1)
+        {
+            int arg1 = dist_real(gen);
+            std::packaged_task<double()> task(std::bind(f_sin<double>,arg1));
+            size_t idx = server.add_task(std::move(task));
+            double res = server.request_result(idx);
+           // std::cout << "работает клиент синус\n";
+            //std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            file << "sin "<<arg1<<" = "<< std::fixed << res<<std::endl;
+              
+        }
+        if (func_type==2)
+        {
+            int arg1 = dist_real(gen);
+            std::packaged_task<double()> task(std::bind(f_sqrt<double>,arg1));
+            size_t idx = server.add_task(std::move(task));
+            double res = server.request_result(idx);
+          //  std::cout<< " работает клиент sqrt\n";
+            //std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            file << "sqrt "<<arg1<<" = "<<  std::fixed << res <<std::endl;
+             
+        }
+    }
+    file.close();
+    //формируем задачу
+    
+
+    // отправляем задачу на сервер, получаем и записываем обратно айди, ждём пока результат по нашему айди придёт, повторяем N раз
+
+}
+
+int main()
+{
+    Server<double> servak;
+    servak.start();
+    std::thread client_pow(client,std::ref(servak),10000,0,"pow.txt");
+    std::thread client_sin(client,std::ref(servak),10000,1,"sin.txt");
+    std::thread client_sqrt(client,std::ref(servak),10000,2,"sqrt.txt");
+
+    client_pow.join();
+    client_sin.join();
+    client_sqrt.join();
+
+
+    servak.stop();
+
+
 }
