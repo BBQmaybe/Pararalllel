@@ -67,7 +67,7 @@ class SensorManager:
 class WindowImage:
     def __init__(self, display_rate, sensor_manager, camera):
         self.display_rate = display_rate
-        self.window_name = 'Webcam'
+        self.window_name = 'Okoshko'
         self.camera = camera
         self.sensor_manager = sensor_manager
 
