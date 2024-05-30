@@ -1,127 +1,127 @@
 #include <iostream>
 #include <boost/program_options.hpp>
-
-namespace po = boost::program_options;
-
+#include <cmath>
 #include <memory>
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <chrono>
+namespace opt = boost::program_options;
 
-#define OFFSET(x, y, m) (((x)*(m)) + (y))
+template <class ctype>
+class Data {
+    private:
+        int len;
+    public:
+        std::vector<ctype> arr;
+        Data(int length) : len(length), arr(len) {
+            #pragma acc enter data copyin(this)
+            #pragma acc enter data create(arr[0:len])
+        }
+        ~Data() {
+            #pragma acc exit data delete(arr)
+            #pragma acc exit data delete(this)
+        }
+        double* Data_ret() {
+            return this->arr.data();
+        }
+};
 
-void initialize(std::unique_ptr<double[]> &A, std::unique_ptr<double[]> &Anew, int n)
-{
-    memset(A.get(), 0, n * n * sizeof(double));
+double linearInterpolation(double x, double x1, double y1, double x2, double y2) {
+    return y1 + ((x - x1) * (y2 - y1) / (x2 - x1));
+}
 
-    double corners[4] = {10, 20, 30, 20};
-    A[0] = corners[0];
-    A[n - 1] = corners[1];
-    A[n * n - 1] = corners[2];
-    A[n * (n - 1)] = corners[3];
-    double step = (corners[1] - corners[0]) / (n - 1);
+void initMatrix(std::vector<double>& arr, int N) {
+    arr[0] = 10.0;
+    arr[N-1] = 20.0;
+    arr[(N-1)*N + (N-1)] = 30.0;
+    arr[(N-1)*N] = 20.0;
 
-
-    for (int i = 1; i < n - 1; i ++) {
-        A[i] = corners[0] + i * step;
-        A[n * i] = corners[0] + i * step;
-        A[(n-1) + n * i] = corners[1] + i * step;
-        A[n * (n-1) + i] = corners[3] + i * step;
+    for (size_t i = 1; i < N-1; i++) {
+        arr[0*N+i] = linearInterpolation(i, 0.0, arr[0], N-1, arr[N-1]);
+        arr[i*N+0] = linearInterpolation(i, 0.0, arr[0], N-1, arr[(N-1)*N]);
+        arr[i*N+(N-1)] = linearInterpolation(i, 0.0, arr[N-1], N-1, arr[(N-1)*N + (N-1)]);
+        arr[(N-1)*N+i] = linearInterpolation(i, 0.0, arr[(N-1)*N], N-1, arr[(N-1)*N + (N-1)]);
     }
-    std::memcpy(Anew.get(), A.get(), n * n * sizeof(double));
-
-    
-}
-
-void deallocate(double *A, double *Anew)
-{
-
-    A = nullptr;
-    Anew = nullptr;
-
 }
 
 
-int main(int argc, char* argv[]) {
-    po::options_description desc("Allowed options");
+int main(int argc, char const *argv[]) {
+    opt::options_description desc("опции");
     desc.add_options()
-        ("help", "Produce help message")
-        ("precision", po::value<double>()->default_value(0.000001), "Set precision")
-        ("grid-size", po::value<int>()->default_value(1024), "Set grid size")
-        ("iterations", po::value<int>()->default_value(1000000), "Set number of iterations");
+        ("accuracy",opt::value<double>()->default_value(1e-6),"точность")
+        ("cellsCount",opt::value<int>()->default_value(256),"размер матрицы")
+        ("iterCount",opt::value<int>()->default_value(1000000),"количество операций")
+        ("help","помощь")
+    ;
 
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, desc), vm);
+    opt::variables_map vm;
+
+    opt::store(opt::parse_command_line(argc, argv, desc), vm);
     if (vm.count("help")) {
-        std::cout << desc << std::endl;
+        std::cout << desc << "\n";
         return 1;
     }
-    po::notify(vm);
+    opt::notify(vm);
 
-    double precision = vm["precision"].as<double>();
-    int n = vm["grid-size"].as<int>();
-    int iter_max= vm["iterations"].as<int>();
+    int N = vm["cellsCount"].as<int>();
+    double accuracy = vm["accuracy"].as<double>();
+    int countIter = vm["iterCount"].as<int>();
 
     double error = 1.0;
+    int iter = 0;
 
-    std::unique_ptr<double[]> A_ptr(new double[n*n]);
-    std::unique_ptr<double[]> Anew_ptr(new double[n*n]);
-    initialize(std::ref(A_ptr), std::ref(Anew_ptr), n);
+    Data<double> A(N * N);
+    Data<double> Anew(N * N);
 
-    double* A = A_ptr.get();
-    double* Anew = Anew_ptr.get();
-
-    printf("Jacobi relaxation Calculation: %d x %d mesh\n", n, n);
+    initMatrix(A.arr, N);
+    initMatrix(Anew.arr, N);
 
     auto start = std::chrono::high_resolution_clock::now();
-    int iter = 0;
-    #pragma acc data copyin(A[:n*n],Anew[:n*n],error)
+    double* curmatrix = A.Data_ret();
+    double* prevmatrix = Anew.Data_ret();
+
+    #pragma acc data copyin(error,prevmatrix[0:N*N],curmatrix[0:N*N])
     {
-        while (error > precision && iter < iter_max)
-        {
-        if(iter % 1000 == 0){
-                error = 0.0;
-                #pragma acc update device(error) 
-                #pragma acc parallel loop independent collapse(2) reduction(max:error) present(A,Anew)
-                for( int j = 1; j < n-1; j++) {
-                    for( int i = 1; i < n-1; i++ ) {
-                        Anew[OFFSET(j, i, n)] = ( A[OFFSET(j, i+1, n)] + A[OFFSET(j, i-1, n)]
-                                                    + A[OFFSET(j-1, i, n)] + A[OFFSET(j+1, i,n)])*0.25;
-
-                        error = fmax( error, fabs(Anew[OFFSET(j, i, n)] - A[OFFSET(j, i , n)]));
-                            
-                    }
-                }
-                #pragma acc update host(error) 
-                #pragma acc wait(1)
-                printf("%5d, %0.6f\n", iter, error);
-            }
-            else{
-                #pragma acc parallel loop independent collapse(2) present(A,Anew) 
-                for( int j = 1; j < n-1; j++) {
-                    for( int i = 1; i < n-1; i++ ) {
-                        Anew[OFFSET(j, i, n)] = ( A[OFFSET(j, i+1, n)] + A[OFFSET(j, i-1, n)]
-                                                    + A[OFFSET(j-1, i, n)] + A[OFFSET(j+1, i,n)])*0.25;
-                            
-                    }
+        while (iter < countIter && iter < 10000000 && error > accuracy) {
+            #pragma acc parallel loop independent collapse(2) present(curmatrix,prevmatrix)
+            for (size_t i = 1; i < N-1; i++) {
+                for (size_t j = 1; j < N-1; j++) {
+                    curmatrix[i*N+j]  = (prevmatrix[i*N+j+1] + prevmatrix[i*N+j-1] + prevmatrix[(i-1)*N+j] + prevmatrix[(i+1)*N+j])*0.25;
                 }
             }
 
-        
-            double* temp = A;
-            A = Anew;
-            Anew = temp;
+            if ((iter+1)%100 == 0){
+                error = 0.00;
+                #pragma acc update device(error)
+                #pragma acc parallel loop independent collapse(2) reduction(max:error) present(curmatrix,prevmatrix)
+                for (size_t i = 1; i < N-1; i++) {
+                    for (size_t j = 1; j < N-1; j++) {
+                        error = fmax(error,fabs(curmatrix[i*N+j]-prevmatrix[i*N+j]));
+                    }
+                }
+                #pragma acc update self(error)
+            }
 
+            std::swap(prevmatrix, curmatrix);
             iter++;
-
         }
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> runtime = end - start;
-        printf("%5d, %0.6f\n", iter, error);
-
-        printf(" total: %f s\n", runtime);
+        #pragma acc update self(curmatrix[0:N*N])
     }
-   
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    double time_s = double(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count())/1000;
+
+    std::cout << "time: " << time_s << " error: " << error << " iteration: " << iter << std::endl;
+
+    if (N == 13 || N == 10) {
+        for (size_t i = 0; i < N; i++) {
+            for (size_t j = 0; j < N; j++) {
+                std::cout << A.arr[i * N + j] << ' ';
+            }
+            std::cout << std::endl;
+        }
+    }
+
     return 0;
 }
