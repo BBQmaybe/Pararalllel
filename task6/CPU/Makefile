@@ -4,14 +4,14 @@ HOST = -acc=host
 MULT = -acc=multicore
 CXX = pgc++
 
-all:single multi
-	
+all:one multi
+ 
 
-single:
+one:
 	$(CXX) $(HOST) $(INFO) $(LIBS) -o $@ main.cpp
 
 multi:
 	$(CXX) $(MULT) $(INFO) $(LIBS) -o $@ main.cpp
 
 clean:all
-	rm serial single
+	rm serial one
