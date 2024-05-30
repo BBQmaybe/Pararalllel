@@ -11,11 +11,11 @@ namespace po = boost::program_options;
 
 #define OFFSET(x, y, m) (((x)*(m)) + (y))
 
-void initialize(std::unique_ptr<double[]>& A, std::unique_ptr<double[]>& Anew, int n)
+void initialize(std::unique_ptr<double[]> &A, std::unique_ptr<double[]> &Anew, int n)
 {
     memset(A.get(), 0, n * n * sizeof(double));
 
-    double corners[4] = { 10, 20, 30, 20 };
+    double corners[4] = {10, 20, 30, 20};
     A[0] = corners[0];
     A[n - 1] = corners[1];
     A[n * n - 1] = corners[2];
@@ -23,21 +23,21 @@ void initialize(std::unique_ptr<double[]>& A, std::unique_ptr<double[]>& Anew, i
     double step = (corners[1] - corners[0]) / (n - 1);
 
 
-    for (int i = 1; i < n - 1; i++) {
+    for (int i = 1; i < n - 1; i ++) {
         A[i] = corners[0] + i * step;
         A[n * i] = corners[0] + i * step;
-        A[(n - 1) + n * i] = corners[1] + i * step;
-        A[n * (n - 1) + i] = corners[3] + i * step;
+        A[(n-1) + n * i] = corners[1] + i * step;
+        A[n * (n-1) + i] = corners[3] + i * step;
     }
     std::memcpy(Anew.get(), A.get(), n * n * sizeof(double));
 
-
+    
 }
-//îïðåäåëÿþòñÿ çíà÷åíèÿ óãëîâûõ ýëåìåíòîâ ìàòðèöû A è âû÷èñëÿåòñÿ øàã äëÿ ëèíåéíîãî èçìåíåíèÿ çíà÷åíèé ìåæäó óãëàìè. 
-//Â öèêëå âû÷èñëÿþòñÿ çíà÷åíèÿ äëÿ îñòàëüíûõ ýëåìåíòîâ ìàññèâà A, íà÷èíàÿ ñ êðàåâ è äâèãàÿñü ê öåíòðó ìàòðèöû. 
-//Ïîñëå ýòîãî ñîäåðæèìîå ìàññèâà A êîïèðóåòñÿ â ìàññèâ Anew ñ ïîìîùüþ ôóíêöèè memcpy.
+//Ð¾Ð¿Ñ€ÐµÐ´ÐµÐ»ÑÑŽÑ‚ÑÑ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ ÑƒÐ³Ð»Ð¾Ð²Ñ‹Ñ… ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð¾Ð² Ð¼Ð°Ñ‚Ñ€Ð¸Ñ†Ñ‹ A Ð¸ Ð²Ñ‹Ñ‡Ð¸ÑÐ»ÑÐµÑ‚ÑÑ ÑˆÐ°Ð³ Ð´Ð»Ñ Ð»Ð¸Ð½ÐµÐ¹Ð½Ð¾Ð³Ð¾ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ñ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ð¹ Ð¼ÐµÐ¶Ð´Ñƒ ÑƒÐ³Ð»Ð°Ð¼Ð¸. 
+//Ð’ Ñ†Ð¸ÐºÐ»Ðµ Ð²Ñ‹Ñ‡Ð¸ÑÐ»ÑÑŽÑ‚ÑÑ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð´Ð»Ñ Ð¾ÑÑ‚Ð°Ð»ÑŒÐ½Ñ‹Ñ… ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð¾Ð² Ð¼Ð°ÑÑÐ¸Ð²Ð° A, Ð½Ð°Ñ‡Ð¸Ð½Ð°Ñ Ñ ÐºÑ€Ð°ÐµÐ² Ð¸ Ð´Ð²Ð¸Ð³Ð°ÑÑÑŒ Ðº Ñ†ÐµÐ½Ñ‚Ñ€Ñƒ Ð¼Ð°Ñ‚Ñ€Ð¸Ñ†Ñ‹. 
+//ÐŸÐ¾ÑÐ»Ðµ ÑÑ‚Ð¾Ð³Ð¾ ÑÐ¾Ð´ÐµÑ€Ð¶Ð¸Ð¼Ð¾Ðµ Ð¼Ð°ÑÑÐ¸Ð²Ð° A ÐºÐ¾Ð¿Ð¸Ñ€ÑƒÐµÑ‚ÑÑ Ð² Ð¼Ð°ÑÑÐ¸Ð² Anew Ñ Ð¿Ð¾Ð¼Ð¾Ñ‰ÑŒÑŽ Ñ„ÑƒÐ½ÐºÑ†Ð¸Ð¸ memcpy.
 
-void deallocate(double* A, double* Anew)
+void deallocate(double *A, double *Anew)
 {
 
     A = nullptr;
@@ -66,18 +66,18 @@ int main(int argc, char* argv[]) {
 
     double precision = vm["precision"].as<double>();
     int n = vm["grid-size"].as<int>();
-    int iter_max = vm["iterations"].as<int>();
+    int iter_max= vm["iterations"].as<int>();
 
     double error = 1.0;
 
-    std::unique_ptr<double[]> A_ptr(new double[n * n]);
-    std::unique_ptr<double[]> Anew_ptr(new double[n * n]);
+    std::unique_ptr<double[]> A_ptr(new double[n*n]);
+    std::unique_ptr<double[]> Anew_ptr(new double[n*n]);
     initialize(std::ref(A_ptr), std::ref(Anew_ptr), n);
 
     double* A = A_ptr.get();
     double* Anew = Anew_ptr.get();
 
-
+    
 
     printf("Jacobi relaxation Calculation: %d x %d mesh\n", n, n);
 
@@ -86,32 +86,32 @@ int main(int argc, char* argv[]) {
     {
         while (error > precision && iter < iter_max)
         {
-            if (iter % 100 == 0) {
+        if(iter % 100 == 0){
                 error = 0.0;
-#pragma acc parallel loop independent collapse(2) reduction(max:error)
-                for (int j = 1; j < n - 1; j++) {
-                    for (int i = 1; i < n - 1; i++) {
-                        Anew[OFFSET(j, i, n)] = (A[OFFSET(j, i + 1, n)] + A[OFFSET(j, i - 1, n)]
-                            + A[OFFSET(j - 1, i, n)] + A[OFFSET(j + 1, i, n)]) * 0.25;
+                #pragma acc parallel loop independent collapse(2) reduction(max:error)
+                for( int j = 1; j < n-1; j++) {
+                    for( int i = 1; i < n-1; i++ ) {
+                        Anew[OFFSET(j, i, n)] = ( A[OFFSET(j, i+1, n)] + A[OFFSET(j, i-1, n)]
+                                                    + A[OFFSET(j-1, i, n)] + A[OFFSET(j+1, i,n)])*0.25;
 
-                        error = fmax(error, fabs(Anew[OFFSET(j, i, n)] - A[OFFSET(j, i, n)]));
-
+                        error = fmax( error, fabs(Anew[OFFSET(j, i, n)] - A[OFFSET(j, i , n)]));
+                            
                     }
                 }
                 printf("%5d, %0.6f\n", iter, error);
             }
-            else {
-#pragma acc parallel loop independent collapse(2) 
-                for (int j = 1; j < n - 1; j++) {
-                    for (int i = 1; i < n - 1; i++) {
-                        Anew[OFFSET(j, i, n)] = (A[OFFSET(j, i + 1, n)] + A[OFFSET(j, i - 1, n)]
-                            + A[OFFSET(j - 1, i, n)] + A[OFFSET(j + 1, i, n)]) * 0.25;
-
+            else{
+                #pragma acc parallel loop independent collapse(2) 
+                for( int j = 1; j < n-1; j++) {
+                    for( int i = 1; i < n-1; i++ ) {
+                        Anew[OFFSET(j, i, n)] = ( A[OFFSET(j, i+1, n)] + A[OFFSET(j, i-1, n)]
+                                                    + A[OFFSET(j-1, i, n)] + A[OFFSET(j+1, i,n)])*0.25;
+                            
                     }
                 }
             }
 
-
+        
             double* temp = A;
             A = Anew;
             Anew = temp;
@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
             iter++;
 
         }
-
+        
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> runtime = end - start;
@@ -127,6 +127,6 @@ int main(int argc, char* argv[]) {
 
         printf(" total: %f s\n", runtime);
     }
-
+   
     return 0;
 }
